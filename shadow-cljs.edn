@@ -1,0 +1,31 @@
+{:deps true
+ :dev-http {9000 ["."]}
+ :builds
+ {:app {:target :browser
+        :output-dir "dist/js"
+        :asset-path "dist/js"
+        :runtime :browser
+        :modules {:main {:entries [game2048.main]
+                         :init-fn game2048.main/init}}
+
+        :dev {:compiler-options {:source-map true}
+              :devtools {:loader-mode :script}
+              :modules {:main {:entries [game2048.main]
+                               :init-fn game2048.main/init
+                               :preloads [dev.preload
+                                          malli.dev.cljs-kondo-preload]}}}
+
+        :release {:compiler-options {:optimizations :advanced
+                                     :source-map true
+                                     :infer-externs true}
+                  :closure-defines {goog.DEBUG false}
+                  :elide-asserts true
+                  :build-hooks [(shadow.cljs.build-report/hook {:output-to "build-report.html"})]}
+
+        :devtools {:preloads [dev.preload]}}
+
+  :test {:target    :node-test
+         :output-to "dist/node-tests.js"
+         :ns-regexp "-test$"
+         :autorun   true}}
+ :nrepl {:port 7888}}
