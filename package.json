@@ -1,7 +1,8 @@
 {
   "scripts": {
     "dev": "npx shadow-cljs watch app",
-    "build": "npx shadow-cljs release app"
+    "build": "npx shadow-cljs release app",
+    "test": "npx shadow-cljs compile test"
   },
   "devDependencies": {
     "modular-styles": "^0.2.0",
