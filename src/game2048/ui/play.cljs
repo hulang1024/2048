@@ -1,7 +1,8 @@
 (ns game2048.ui.play
   (:require
     [game2048.game :as game]
-    [reagent.core :as r]))
+    [reagent.core :as r]
+    [game2048.random :as random]))
 
 (defonce state
   (r/atom {:game nil
@@ -9,7 +10,7 @@
            :history []}))
 
 (defn- new-game [app]
-  (let [seed (int (* (rand) 100000))
+  (let [seed (random/random-seed)
         game (game/make 4 4 seed)]
     (-> app
         (assoc :history [game])

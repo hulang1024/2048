@@ -1,4 +1,5 @@
-(ns game2048.game)
+(ns game2048.game
+  (:require [game2048.random :as random]))
 
 (def Pos [:cat :int :int])
 
@@ -6,28 +7,25 @@
 
 (defn event-schema [type & fields]
   [type (into [:map [:type [:= type]]] fields)])
+
 (def Event
   [:multi {:dispatch :type}
    (event-schema :moved
                  [:from Pos]
                  [:to Pos]
                  [:merged [:maybe :int]])
-   (event-schema :spawned [:pos Pos])])
+   (event-schema :spawned
+                 [:pos Pos]
+                 [:number :int])])
 
 (def Game
   [:map
-   [:score :int]
+   [:score [:int {:min 0}]]
    [:random some?]
    [:rows :int]
    [:cols :int]
    [:board [:vector [:vector :int]]]
    [:events [:vector Event]]])
-
-(defn- make-random [seed] seed)
-
-(defn- next-int [random]
-  (let [n (mod (* random 16807) 2147483647)]
-    [n random]))
 
 (defn- cell-empty? [c] (zero? c))
 (defn- cell-number? [c] (> c 0))
@@ -42,13 +40,14 @@
 
 (defn- spawn-number [{:keys [random board] :as game}]
   (let [space-indices (find-cells game :up cell-empty?)
-        [i random] (next-int random)
+        [i random] (random/next-int random)
         [r c] (nth space-indices (mod i (count space-indices)))
-        [n random] (next-int random)]
+        [n random] (random/next-int random)
+        number (if (odd? n) 2 4)]
     (-> game
-        (update :events conj {:type :spawned :pos [r c]})
+        (update :events conj {:type :spawned :pos [r c] :number number})
         (assoc :random random
-               :board (assoc-in board [r c] (if (odd? n) 2 4))))))
+               :board (assoc-in board [r c] number)))))
 
 (defn- slide-one-number [game orig-pos side-off]
   (loop [{:keys [board] :as game} game
@@ -84,10 +83,10 @@
         :else game))))
 
 (defn make
-  {:malli/schema [:=> [:cat :int :int some?] Game]}
+  {:malli/schema [:=> [:cat :int :int :int] Game]}
   [board-rows board-cols seed]
   (-> {:score 0
-       :random (make-random seed)
+       :random (random/make-random seed)
        :rows board-rows
        :cols board-cols
        :board (vec (repeat board-rows (vec (repeat board-cols 0))))
