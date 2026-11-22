@@ -1,7 +1,7 @@
 (ns game2048.game
   (:require [game2048.random :as random]))
 
-(def Pos [:cat :int :int])
+(def Pos [:tuple :int :int])
 
 (def Dir [:enum :up :right :down :left])
 
@@ -13,7 +13,7 @@
    (event-schema :moved
                  [:from Pos]
                  [:to Pos]
-                 [:merged [:maybe :int]])
+                 [:merged {:optional true} :int])
    (event-schema :spawned
                  [:pos Pos]
                  [:number :int])
@@ -48,52 +48,60 @@
        (filterv #(cell-pred (get-in board %)))))
 
 (defn- spawn-number [{:keys [random board] :as game}]
-  (let [space-indices (find-cells game :up cell-empty?)
-        [i random] (random/next-int random)
-        [r c] (nth space-indices (mod i (count space-indices)))
-        [n random] (random/next-int random)
-        number (if (odd? n) 2 4)]
-    (-> game
-        (emit-event {:type :spawned :pos [r c] :number number})
-        (assoc :random random
-               :board (assoc-in board [r c] number)))))
+  (let [space-indices (find-cells game :up cell-empty?)]
+    (if (seq space-indices)
+      (let [[i random] (random/next-int random)
+            [r c] (nth space-indices (mod i (count space-indices)))
+            [n random] (random/next-int random)
+            number (if (< (mod n 10) 9) 2 4)]
+        (-> game
+            (emit-event {:type :spawned :pos [r c] :number number})
+            (assoc :random random
+                   :board (assoc-in board [r c] number))))
+      game)))
 
-(defn- slide-one-number [game orig-pos side-off]
-  (loop [{:keys [board] :as game} game
-         number (get-in board orig-pos)
-         orig-pos orig-pos
-         prev-side-pos orig-pos]
-    (let [curr-side-pos (mapv + prev-side-pos side-off)
-          side (get-in board curr-side-pos)]
+(defn- move-number [game number from to merged?]
+  (-> game
+      (emit-event (cond-> {:type :moved :from from :to to}
+                    merged? (assoc :merged number)))
+      (assoc :board (-> (:board game)
+                        (assoc-in from 0)
+                        (assoc-in to number)))))
+
+(defn- try-slide-number [game from side-offset merged-cells]
+  (loop [game game
+         number (get-in (:board game) from)
+         prev-to from]
+    (let [curr-to (mapv + prev-to side-offset)
+          side-number (get-in (:board game) curr-to)]
       (cond
-        (cell-empty? side)
-        (recur game number orig-pos curr-side-pos)
+        (and (some? side-number) (cell-empty? side-number))
+        (recur game number curr-to)
 
-        (= number side)
-        (let [merged (+ number number)]
+        (= number side-number)
+        (if (some #(= curr-to %) merged-cells)
+          (if (not= from prev-to)
+            (move-number game number from prev-to false)
+            game)
           (-> game
-              (emit-event {:type :moved :from orig-pos :to curr-side-pos :merged merged})
-              (assoc :board (-> board
-                                (assoc-in orig-pos 0)
-                                (assoc-in curr-side-pos merged)))
-              (update :score + merged)))
+              (move-number (+ number number) from curr-to true)
+              (update :score + (+ number number))))
 
-        (or (nil? side) (not= number side))
-        (if (not= orig-pos prev-side-pos)
-          (-> game
-              (emit-event {:type :moved :from orig-pos :to prev-side-pos})
-              (assoc :board (-> board
-                                (assoc-in orig-pos 0)
-                                (assoc-in prev-side-pos number))))
-          game)
-
-        :else game))))
+        :else
+        (if (not= from prev-to)
+          (move-number game number from prev-to false)
+          game)))))
 
 (defn- slide [game dir]
-  (let [side-off ({:up [-1 0] :down [1 0] :right [0 1] :left [0 -1]} dir)]
-    (reduce (fn [game orig-pos] (slide-one-number game orig-pos side-off))
-            game
-            (find-cells game dir cell-number?))))
+  (let [side-offset ({:up [-1 0] :down [1 0] :right [0 1] :left [0 -1]} dir)]
+    (-> (reduce (fn [{:keys [merged-cells] :as game} orig-pos]
+                  (let [slid-game (try-slide-number game orig-pos side-offset merged-cells)]
+                    (assoc slid-game :merged-cells
+                           (into [] (keep #(when (:merged %) (:to %))
+                                          (find-events slid-game :moved))))))
+                (assoc game :merged-cells [])
+                (find-cells game dir cell-number?))
+        (dissoc :merged-cells))))
 
 (defn- maybe-spawn-number [game]
   (if (seq (find-events game :moved))
@@ -101,11 +109,11 @@
     game))
 
 (defn- check-game-over [game]
-  (loop [game game [test-dir & _] [:up :down :left :right]]
-    (cond
-      (nil? test-dir) game
-      (seq (find-events (slide game test-dir) :moved)) (emit-event game {:type :game-over})
-      :else (recur game (next test-dir)))))
+  (if (or (seq (find-events game :game-over))
+          (some #(seq (find-events (slide (clear-events game) %) :moved))
+                [:up :down :left :right]))
+    game
+    (emit-event game {:type :game-over})))
 
 (defn make
   {:malli/schema [:=> [:cat :int :int :int] Game]}
@@ -122,8 +130,10 @@
 (defn handle
   {:malli/schema [:=> [:cat Game Dir] Game]}
   [game dir]
-  (-> game
-      (clear-events)
-      (slide dir)
-      (maybe-spawn-number)
-      (check-game-over)))
+  (if (empty? (find-events game :game-over))
+    (-> game
+        (clear-events)
+        (slide dir)
+        (maybe-spawn-number)
+        (check-game-over))
+    game))

@@ -10,7 +10,7 @@
 (defn debug-game-state-text [game]
   (tap> game)
   (tap> (->> (:board game)
-             (map #(str/join " " %))
+             (map (fn [xs] (->> xs (map #(if (zero? %) "." %)) (str/join " "))))
              (str/join "\n"))))
 
 (defn build [state]
