@@ -5,7 +5,7 @@
 
 (def Dir [:enum :up :right :down :left])
 
-(defn event-schema [type & fields]
+(defn- event-schema [type & fields]
   [type (into [:map [:type [:= type]]] fields)])
 
 (def Event
@@ -16,7 +16,8 @@
                  [:merged [:maybe :int]])
    (event-schema :spawned
                  [:pos Pos]
-                 [:number :int])])
+                 [:number :int])
+   (event-schema :game-over)])
 
 (def Game
   [:map
@@ -82,6 +83,20 @@
 
         :else game))))
 
+(defn- slide [game dir]
+  (let [side-off ({:up [-1 0] :down [1 0] :right [0 1] :left [0 -1]} dir)
+        number-indices (find-cells game dir cell-number?)]
+    (reduce (fn [game orig-pos] (slide-one-number game orig-pos side-off))
+            (assoc game :events [])
+            number-indices)))
+
+(defn- check-game-over [game]
+  (loop [game game [test-dir & _] [:up :down :left :right]]
+    (cond
+      (nil? test-dir) game
+      (slide game test-dir) (update game :events conj {:type :game-over})
+      :else (recur game (next test-dir)))))
+
 (defn make
   {:malli/schema [:=> [:cat :int :int :int] Game]}
   [board-rows board-cols seed]
@@ -94,13 +109,11 @@
       (spawn-number)
       (spawn-number)))
 
-(defn slide
+(defn handle
   {:malli/schema [:=> [:cat Game Dir] Game]}
   [game dir]
-  (let [side-off ({:up [-1 0] :down [1 0] :right [0 1] :left [0 -1]} dir)
-        number-indices (find-cells game dir cell-number?)
-        slid-game (reduce (fn [game orig-pos] (slide-one-number game orig-pos side-off))
-                          (assoc game :events [])
-                          number-indices)]
+  (let [slid-game (slide game dir)
+        moved? (seq (filter #(= (:type %) :moved) (:events slid-game)))]
     (cond-> slid-game
-      (seq (:events slid-game)) (spawn-number ))))
+      moved? (spawn-number)
+      true (check-game-over))))

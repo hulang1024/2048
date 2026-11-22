@@ -16,10 +16,10 @@
         (assoc :history [game])
         (assoc :game game))))
 
-(defn- slide [app action]
+(defn- handle-action [app action]
   (-> app
       (update :history conj (:game app))
-      (update :game game/slide action)))
+      (update :game game/handle action)))
 
 (def ^:priavte key-map
   {"ArrowLeft" :left
@@ -35,4 +35,4 @@
         action (key-map key)]
     (when (contains? #{:left :right :up :down} action)
       (tap> (str "action: " action))
-      (swap! state slide action))))
+      (swap! state handle-action action))))
