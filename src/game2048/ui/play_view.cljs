@@ -72,7 +72,7 @@
          [:div {:class "score__value"} (:score game)]]
         [:div {:class "score"}
          [:div {:class "score__label"} "最高分"]
-         [:div {:class "score__value"} best-score]]]]
+         [:div {:class "score__value"} (:best-score game)]]]]
       [:div {:class (row-class)}
        [:div {:class (tip-class)}
         "合并数字以达到"

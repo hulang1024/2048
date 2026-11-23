@@ -24,6 +24,7 @@
 (def Game
   [:map
    [:score [:int {:min 0}]]
+   [:best-score [:int {:min 0}]]
    [:random some?]
    [:rows [:int {:min 1}]]
    [:cols [:int {:min 2}]]
@@ -70,6 +71,11 @@
                         (assoc-in from 0)
                         (assoc-in to number)))))
 
+(defn add-score [game n]
+  (let [score (+ (:score game) n)]
+    (-> (assoc game :score score)
+        (update :best-score max score))))
+
 (defn- try-slide-number [game from side-offset merged-cells]
   (loop [game game
          number (get-in (:board game) from)
@@ -87,7 +93,7 @@
             game)
           (-> game
               (move-number (+ number number) from curr-to true)
-              (update :score + (+ number number))))
+              (add-score (+ number number))))
 
         :else
         (if (not= from prev-to)
@@ -119,8 +125,9 @@
 
 (defn make
   {:malli/schema [:=> [:cat :int :int :int] Game]}
-  [board-rows board-cols seed]
+  [board-rows board-cols seed & [best-score]]
   (-> {:score 0
+       :best-score (or best-score 0)
        :random (random/make-random seed)
        :rows board-rows
        :cols board-cols

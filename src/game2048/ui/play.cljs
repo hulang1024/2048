@@ -7,7 +7,6 @@
 (defonce state
   (r/atom {:started? false
            :game nil
-           :best-score 0
            :history []}))
 
 (defn- new-game [app]
