@@ -5,6 +5,8 @@
 
 (def Dir [:enum :up :right :down :left])
 
+(def Action (conj Dir :start))
+
 (defn- event-schema [type & fields]
   [type (into [:map [:type [:= type]]] fields)])
 
@@ -13,7 +15,7 @@
    (event-schema :moved
                  [:from Pos]
                  [:to Pos]
-                 [:merged {:optional true} :int])
+                 [:merged-number {:optional true} :int])
    (event-schema :spawned
                  [:pos Pos]
                  [:number :int])
@@ -23,8 +25,8 @@
   [:map
    [:score [:int {:min 0}]]
    [:random some?]
-   [:rows :int]
-   [:cols :int]
+   [:rows [:int {:min 1}]]
+   [:cols [:int {:min 2}]]
    [:board [:vector [:vector :int]]]
    [:events [:vector Event]]])
 
@@ -37,7 +39,7 @@
 (defn- clear-events [game] (assoc game :events []))
 
 (defn find-events [game event-type]
-  (filterv #(= (:type %) event-type) (:events game)))
+  (seq (filterv #(= (:type %) event-type) (:events game))))
 
 (defn- find-cells [{:keys [board rows cols]} dir cell-pred]
   (->> (case dir
@@ -63,7 +65,7 @@
 (defn- move-number [game number from to merged?]
   (-> game
       (emit-event (cond-> {:type :moved :from from :to to}
-                    merged? (assoc :merged number)))
+                    merged? (assoc :merged-number number)))
       (assoc :board (-> (:board game)
                         (assoc-in from 0)
                         (assoc-in to number)))))
@@ -97,20 +99,20 @@
     (-> (reduce (fn [{:keys [merged-cells] :as game} orig-pos]
                   (let [slid-game (try-slide-number game orig-pos side-offset merged-cells)]
                     (assoc slid-game :merged-cells
-                           (into [] (keep #(when (:merged %) (:to %))
+                           (into [] (keep #(when (:merged-number %) (:to %))
                                           (find-events slid-game :moved))))))
                 (assoc game :merged-cells [])
                 (find-cells game dir cell-number?))
         (dissoc :merged-cells))))
 
 (defn- maybe-spawn-number [game]
-  (if (seq (find-events game :moved))
+  (if (find-events game :moved)
     (spawn-number game)
     game))
 
 (defn- check-game-over [game]
-  (if (or (seq (find-events game :game-over))
-          (some #(seq (find-events (slide (clear-events game) %) :moved))
+  (if (or (find-events game :game-over)
+          (some #(find-events (slide (clear-events game) %) :moved)
                 [:up :down :left :right]))
     game
     (emit-event game {:type :game-over})))
@@ -123,17 +125,20 @@
        :rows board-rows
        :cols board-cols
        :board (vec (repeat board-rows (vec (repeat board-cols 0))))
-       :events []}
-      (spawn-number)
-      (spawn-number)))
+       :events []}))
 
 (defn handle
-  {:malli/schema [:=> [:cat Game Dir] Game]}
-  [game dir]
+  {:malli/schema [:=> [:cat Game Action] Game]}
+  [game action]
   (if (empty? (find-events game :game-over))
-    (-> game
-        (clear-events)
-        (slide dir)
-        (maybe-spawn-number)
-        (check-game-over))
+    (cond
+      (contains? #{:up :right :down :left} action)
+      (-> game
+          (clear-events)
+          (slide action)
+          (maybe-spawn-number)
+          (check-game-over))
+
+      (= action :start)
+      (-> game (spawn-number) (spawn-number)))
     game))

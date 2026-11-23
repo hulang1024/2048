@@ -5,21 +5,24 @@
     [game2048.random :as random]))
 
 (defonce state
-  (r/atom {:game nil
-           :best-score 1234
+  (r/atom {:started? false
+           :game nil
+           :best-score 0
            :history []}))
 
 (defn- new-game [app]
   (let [seed (random/random-seed)
         game (game/make 4 4 seed)]
     (-> app
-        (assoc :history [game])
-        (assoc :game game))))
+        (assoc :started? false)
+        (assoc :game game)
+        (assoc :history [game]))))
 
 (defn- handle-action [app action]
   (-> app
-      (update :history conj (:game app))
-      (update :game game/handle action)))
+      (assoc :started? true)
+      (update :game game/handle action)
+      (update :history conj (:game app))))
 
 (def ^:priavte key-map
   {"ArrowLeft" :left
@@ -29,6 +32,9 @@
 
 (defn new-game! []
   (swap! state new-game))
+
+(defn start-game! []
+  (swap! state handle-action :start))
 
 (defn handle-keydown! [event]
   (let [key (.-code event)
