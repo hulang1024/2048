@@ -57,11 +57,10 @@
    :cursor "pointer"})
 
 (defn- handle-new-game []
-  (play/new-game!)
-  (play/start-game!))
+  (play/restart-game!))
 
 (defn build [app]
-  (let [{:keys [game best-score]} @app]
+  (let [{:keys [game]} @app]
     [:div {:class (play-view-class)}
      [:div {:class (header-class)} 
       [:div {:class (row-class)}
@@ -87,7 +86,7 @@
 
 (defn mount []
   (play/new-game!)
-  (js/document.addEventListener "keydown" play/handle-keydown!)
+  (js/document.addEventListener "keydown" play/on-keydown!)
   (rd/render @root [build play/state])
   (letfn [(go []
             (if-let [el (js/document.querySelector ".board-container")]

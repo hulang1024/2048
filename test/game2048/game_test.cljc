@@ -8,6 +8,7 @@
     (are [line slide-dir expected]
          (let [game (-> (game/make 4 4 3)
                         (assoc-in [:board 0] line)
+                        (game/handle :start)
                         (game/handle slide-dir))]
            (= (get-in game [:board 0]) expected))
          [2 2 4 0]  :left [4 4 0 0]

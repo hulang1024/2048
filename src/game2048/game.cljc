@@ -23,6 +23,7 @@
 
 (def Game
   [:map
+   [:state [:enum :ready :playing :game-over]]
    [:score [:int {:min 0}]]
    [:best-score [:int {:min 0}]]
    [:random some?]
@@ -71,7 +72,7 @@
                         (assoc-in from 0)
                         (assoc-in to number)))))
 
-(defn add-score [game n]
+(defn- add-score [game n]
   (let [score (+ (:score game) n)]
     (-> (assoc game :score score)
         (update :best-score max score))))
@@ -117,16 +118,27 @@
     game))
 
 (defn- check-game-over [game]
-  (if (or (find-events game :game-over)
+  (if (or (= (:state game) :game-over)
           (some #(find-events (slide (clear-events game) %) :moved)
                 [:up :down :left :right]))
     game
-    (emit-event game {:type :game-over})))
+    (-> game
+        (assoc :state :game-over)
+        (emit-event {:type :game-over}))))
+
+(defn- start [game]
+  (if (= (:state game) :ready)
+    (-> game
+        (assoc :state :playing)
+        (spawn-number)
+        (spawn-number))
+    game))
 
 (defn make
   {:malli/schema [:=> [:cat :int :int :int] Game]}
   [board-rows board-cols seed & [best-score]]
-  (-> {:score 0
+  (-> {:state :ready
+       :score 0
        :best-score (or best-score 0)
        :random (random/make-random seed)
        :rows board-rows
@@ -137,15 +149,13 @@
 (defn handle
   {:malli/schema [:=> [:cat Game Action] Game]}
   [game action]
-  (if (empty? (find-events game :game-over))
-    (cond
-      (contains? #{:up :right :down :left} action)
-      (-> game
-          (clear-events)
-          (slide action)
-          (maybe-spawn-number)
-          (check-game-over))
-
-      (= action :start)
-      (-> game (spawn-number) (spawn-number)))
-    game))
+  (or (case (:state game)
+        :ready (when (= action :start) (start game))
+        :playing (when (contains? #{:up :right :down :left} action)
+                   (-> game
+                       (clear-events)
+                       (slide action)
+                       (maybe-spawn-number)
+                       (check-game-over)))
+        nil)
+      game))

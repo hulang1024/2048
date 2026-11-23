@@ -1,6 +1,7 @@
 (ns game2048.ui.ticker)
 
-(def state (atom {:last-time 0
+(def state (atom {:started? false
+                  :last-time 0
                   :accumulator 0
                   :update-time 0
                   :tick-fns []}))
@@ -25,5 +26,6 @@
 (defn add-tick [tick-fn]
   (swap! state update :tick-fns conj tick-fn)
   (when-not (:started? @state)
+    (swap! state assoc :started? true)
     (start-loop)))
 

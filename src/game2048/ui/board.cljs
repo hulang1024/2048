@@ -118,11 +118,13 @@
 
 (defn build [play-state]
   (add-watch play-state :board-watcher
-             (fn [_k _atom old-state {:keys [game started?] :as play-state}]
+             (fn [_k _atom
+                  {old-game-id :game-id}
+                  {:keys [game-id game] :as play-state}]
                (tap> (->> (:board game)
                           (map (fn [xs] (->> xs (map #(if (zero? %) "." %)) (str/join " "))))
                           (str/join "\n")))
-               (when (and (:started? old-state) (not started?))
+               (when (not= old-game-id game-id)
                  (reset-board! board-draw-state play-state))
                (when-let [events (game/find-events game :moved)]
                  (doseq [{:keys [from to merged-number]} events]
