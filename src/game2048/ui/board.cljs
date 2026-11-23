@@ -18,9 +18,8 @@
    :background "#cdc1b4"
    :border-radius "3px"
    :text-align "center"
-   :font-weight "bold"
-   :font-size "calc(min(100cqw, 100cqh) * 0.05)"
-   :transition "all 0.2s"})
+   :font-weight 700
+   :font-size "calc(min(100cqw, 100cqh) * 0.065)"})
 
 (defn cell-styles [number]
   (let [number-bg-color {2 "#eee4da"
@@ -42,16 +41,14 @@
     {:background (get number-bg-color number "#00000")
      :color (get number-color number "#f9f6f2")}))
 
-(defn- ->px-board-pos [cell-size gap r c]
+(defn- ->cell-px-pos [cell-size gap r c]
   [(+ gap (* c gap) (* c cell-size))
    (+ gap (* r gap) (* r cell-size))])
 
 (defn- set-cell-position [el x y]
-  (let [translate (str "translate(" x "px" "," y "px)")]
-    (aset (.-style el) "--translate" translate)
-    (set! (.. el -style -transform) translate)))
+  (set! (.. el -style -transform) (str "translate(" x "px" "," y "px)")))
 
-(defn- change-number [el number]
+(defn- set-cell-number [el number]
   (set! (.-textContent el) number)
   (doseq [[k v] (cell-styles number)]
     (aset (.-style el) (name k) v)))
@@ -60,86 +57,89 @@
   (let [el (js/document.createElement "div")]
     (.. el -classList (add (cell-class)))
     (when (> number 0)
-      (change-number el number))
+      (set-cell-number el number))
     (set-cell-position el x y)
     (set! (.. el -style -width) (str cell-size "px"))
     (set! (.. el -style -height) (str cell-size "px"))
     el))
 
-(defn- add-cell [{:keys [cell-size gap board-el]} [r c] number]
-  (let [[x y] (->px-board-pos cell-size gap r c)
+(defn- add-number [{:keys [container cell-size gap]} [r c] number]
+  (assert (> number 0))
+  (let [[x y] (->cell-px-pos cell-size gap r c)
         cell-el (create-cell x y cell-size number)]
-    (when (> number 0)
-      (aset cell-el "pos-r" r)
-      (aset cell-el "pos-c" c))
-    (.appendChild board-el cell-el)))
+    (aset cell-el "pos-r" r)
+    (aset cell-el "pos-c" c)
+    (.appendChild container cell-el)))
 
-(defn- get-cell [board-el r c]
+(defn- get-cell [container r c]
   (first (filter #(and (= (aget % "pos-r") r) (= (aget % "pos-c") c))
-                 (.-children board-el))))
+                 (.-children container))))
 
-(defn- move-cell [{:keys [cell-size gap board-el]} [from-r from-c] [to-r to-c] merged-number]
-  (let [[to-x to-y] (->px-board-pos cell-size gap to-r to-c)
-        from-cell-el (get-cell board-el from-r from-c)
-        to-cell-el (get-cell board-el to-r to-c)]
+(defn- move-cell [{:keys [cell-size gap container]} [from-r from-c] [to-r to-c] merged-number]
+  (let [[to-x to-y] (->cell-px-pos cell-size gap to-r to-c)
+        from-cell-el (get-cell container from-r from-c)
+        to-cell-el (get-cell container to-r to-c)]
     (set-cell-position from-cell-el to-x to-y)
     (aset from-cell-el "pos-r" to-r)
     (aset from-cell-el "pos-c" to-c)
     (when (> merged-number 0)
-      (.addEventListener from-cell-el "transitionend"
-                         (fn []
-                           (.removeChild (.-parentElement to-cell-el) to-cell-el)
-                           (change-number from-cell-el merged-number))))))
+      (.removeChild (.-parentElement to-cell-el) to-cell-el)
+      (set-cell-number from-cell-el merged-number))))
 
 (defonce ^:private board-draw-state
   (atom {:gap 0
          :cell-size 0
-         :board-el nil}))
+         :container nil}))
 
-(defn- create-board []
-  (let [board-el (js/document.createElement "div")]
-    (.. board-el -classList (add (board-class)))
-    board-el))
-
-(defn- reset-board! [board-draw-state {{:keys [rows cols]} :game}]
-  (tap> "reset-board!")
-  (let [cell-size 100
-        gap 14
-        width (+ gap (* rows cell-size) (* rows gap))
+(defn- create-board [rows cols {:keys [cell-size gap]}]
+  (let [width (+ gap (* rows cell-size) (* rows gap))
         height (+ gap (* cols cell-size) (* cols gap))
-        board-el (:board-el @board-draw-state)]
-    (swap! board-draw-state assoc :gap gap :cell-size cell-size)
-    (set! (.. board-el -style -width) (str width "px"))
-    (set! (.. board-el -style -height) (str height "px"))
-    (.replaceChildren board-el)
+        el (js/document.createElement "div")
+        bg-layer-el (js/document.createElement "div")]
+    (.. el -classList (add (board-class)))
+    (.. bg-layer-el -classList (add "grid"))
+    (.appendChild el bg-layer-el)
+    (set! (.. el -style -width) (str width "px"))
+    (set! (.. el -style -height) (str height "px"))
     (doseq [r (range rows)
-            c (range cols)]
-      (add-cell @board-draw-state [r c] 0))))
+            c (range cols)
+            :let[[x y] (->cell-px-pos cell-size gap r c)
+                 cell-el (create-cell x y cell-size 0)]]
+      (.appendChild bg-layer-el cell-el))
+    el))
+
+(defn- reset-board! [{:keys [container]} {:keys [rows cols board]}]
+  (tap> "reset-board!")
+  (run! #(.removeChild container %)
+        (js/Array.from (.querySelectorAll container (str ":scope > ." (cell-class)))))
+  (doseq [r (range rows)
+          c (range cols)
+          :when (> (get-in board [r c]) 0)]
+    (add-number @board-draw-state [r c] (get-in board [r c]))))
 
 (defn build [play-state]
   (add-watch play-state :board-watcher
              (fn [_k _atom
                   {old-game-id :game-id}
-                  {:keys [game-id game] :as play-state}]
+                  {:keys [game-id game]}]
+               (tap> game)
                (tap> (->> (:board game)
                           (map (fn [xs] (->> xs (map #(if (zero? %) "." %)) (str/join " "))))
                           (str/join "\n")))
-               (when (not= old-game-id game-id)
-                 (reset-board! board-draw-state play-state))
-               (when-let [events (game/find-events game :moved)]
-                 (doseq [{:keys [from to merged-number]} events]
-                   (println from to merged-number)
-                   (move-cell @board-draw-state from to merged-number)))
-               (when-let [events (game/find-events game :spawned)]
-                 (doseq [{:keys [pos number]} events]
-                   (add-cell @board-draw-state pos number)))))
+               (if (not= old-game-id game-id)
+                 (reset-board! @board-draw-state game)
+                 (do (when-let [events (game/find-events game :moved)]
+                       (doseq [{:keys [from to merged-number]} events]
+                         (move-cell @board-draw-state from to merged-number)))
+                     (when-let [events (game/find-events game :spawned)]
+                       (doseq [{:keys [pos number]} events]
+                         (add-number @board-draw-state pos number)))))))
 
-  (let [board-el (create-board)]
-    (swap! board-draw-state assoc :board-el board-el)
-    (reset-board! board-draw-state @play-state)
+  (let [{{:keys [rows cols]} :game} @play-state
+        layout {:cell-size 104 :gap 14} 
+        board-el (create-board rows cols layout)]
+    (swap! board-draw-state #(-> (assoc % :container board-el) (merge layout)))
+    (reset-board! @board-draw-state (:game @play-state))
     board-el))
 
-(defn tick [state]
-  (let [{:keys [game history]} @state]
-    (when (not= (peek history) game)
-      nil)))
+(defn tick [dt])

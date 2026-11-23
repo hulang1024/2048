@@ -9,14 +9,14 @@
 
 (defstyles play-view-class []
   {:display "flex"
-   :flex-direction "column"})
+   :flex-direction "column"
+   :user-select "none"})
 
 (defstyles header-class []
   {:display "flex"
    :justify-content "center"
    :flex-direction "column"
    :align-items "center"
-   :user-select "none"
    :color "#fff"
    ".game-title" {:font-size "3rem"
                   :font-weight "bold"
@@ -35,7 +35,7 @@
              :flex-direction "column"
              :justify-content "center"
              :padding "0.3rem 1rem"
-             :min-width "4rem"
+             :min-width "6rem"
              :font-weight "bold"
              :text-align "center"
              :border-radius "4px"
@@ -56,7 +56,24 @@
    :background "#8f7a66"
    :cursor "pointer"})
 
-(defn- handle-new-game []
+(defstyles board-container-class []
+  {:position "relative"})
+
+(defstyles game-message-overlay-class [display?]
+  {:position "absolute"
+   :z-index 1
+   :width "100%"
+   :height "100%"
+   :display (if display? "flex" "none")
+   :flex-direction "column"
+   :justify-content "center"
+   :align-items "center"
+   :text-align "center"
+   :background "#eee4da80"
+   :color "#776e65"
+   :font-size "4rem"})
+
+(defn- handle-restart-game []
   (play/restart-game!))
 
 (defn build [app]
@@ -77,9 +94,14 @@
         "合并数字以达到"
         [:strong "2048！"]]
        [:button {:class (button-class)
-                 :on-click handle-new-game}
+                 :on-click handle-restart-game}
         "新游戏"]]]
-     [:div {:class "board-container"}]]))
+     [:div {:class (board-container-class)}
+      [:div {:class (game-message-overlay-class (= (:state game) :game-over))}
+       [:p "Game Over!" ]
+       [:button {:class (button-class)
+                 :on-click handle-restart-game}
+        "重新开始"]]]]))
 
 (defonce ^:private root
   (delay (rd/create-root (.getElementById js/document "app"))))
@@ -89,9 +111,9 @@
   (js/document.addEventListener "keydown" play/on-keydown!)
   (rd/render @root [build play/state])
   (letfn [(go []
-            (if-let [el (js/document.querySelector ".board-container")]
+            (if-let [el (js/document.querySelector (str "." (board-container-class)))]
               (do (.appendChild el (board/build play/state))
                   (play/start-game!))
               (js/requestAnimationFrame go)))]
     (js/requestAnimationFrame go))
-  (ticker/add-tick #(board/tick play/state)))
+  (ticker/add-tick board/tick))
